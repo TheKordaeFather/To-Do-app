@@ -11,7 +11,15 @@ class TaskListController: UITableViewController {
     // хранилище задач
     var tasksStorage: TasksStorageProtocol = TasksStorage()
     // коллекция задач
-    var tasks: [TaskPriority:[TaskProtocol]] = [:]
+    var tasks: [TaskPriority:[TaskProtocol]] = [:] {
+        didSet {
+            for (tasksGroupPriority, tasksGroup) in tasks {
+                tasks[tasksGroupPriority] = tasksGroup.sorted(by: { task1, task2 in
+                    task1.status.rawValue < task2.status.rawValue
+                })
+            }
+        }
+    }
     // порядок отображения секций по типам
     // индекс в массиве соответствует индексу секции в таблице
     var sectionsTypesPosition: [TaskPriority] = [.important, .normal]
@@ -20,6 +28,7 @@ class TaskListController: UITableViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         loadTasks()
+        navigationItem.leftBarButtonItem = editButtonItem
     }
     private func loadTasks() {
         sectionsTypesPosition.forEach { taskType in
@@ -28,12 +37,13 @@ class TaskListController: UITableViewController {
         tasksStorage.loadTasks().forEach { task in
         tasks[task.type]?.append(task)
         }
-        
+        /*
         for (tasksGroupPriority, tasksGroup) in tasks {
             tasks[tasksGroupPriority] = tasksGroup.sorted { task1, task2 in
                 task1.status.rawValue < task2.status.rawValue
             }            
         }
+         */
     }
     // MARK: - Table view data source
 
@@ -43,9 +53,9 @@ class TaskListController: UITableViewController {
 
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         let taskType = sectionsTypesPosition[section]
-        guard let currentTasksType = tasks[taskType] else { return 0
+        guard let taskList = tasks[taskType] else { return 0
         }
-        return currentTasksType.count
+        return taskList.count
     }
     
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
@@ -128,16 +138,76 @@ class TaskListController: UITableViewController {
         
     }
 
-
-    /*
-    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "reuseIdentifier", for: indexPath)
-
-        // Configure the cell...
-
-        return cell
+    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        
+        let taskType = sectionsTypesPosition[indexPath.section]
+        guard let task = tasks[taskType]?[indexPath.row] else {
+            return
+        }
+        
+        guard tasks[taskType]![indexPath.row].status == .planned else {
+            tableView.deselectRow(at: indexPath, animated: true)
+            return
+        }
+                
+        tasks[taskType]![indexPath.row].status = .completed
+        tableView.reloadSections(IndexSet(arrayLiteral:indexPath.section), with: .automatic)
     }
-    */
+    
+    override func tableView(_ tableView: UITableView, leadingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        
+        let taskType = sectionsTypesPosition[indexPath.section]
+        guard let task = tasks[taskType]?[indexPath.row] else {
+            return nil
+        }
+        
+        guard tasks[taskType]![indexPath.row].status == .completed else {
+            return nil
+        }
+        
+        let actionSwipeInstance = UIContextualAction(style: .normal, title: "Не выполнена") { _,_,_ in
+            self.tasks[taskType]![indexPath.row].status = .planned
+            self.tableView.reloadSections(IndexSet(arrayLiteral: indexPath.section), with: .automatic)
+        }
+        return UISwipeActionsConfiguration(actions: [actionSwipeInstance])
+        
+    }
+    
+    override func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
+        if editingStyle == .delete {
+            let taskType = sectionsTypesPosition[indexPath.section]
+            tasks[taskType]?.remove(at: indexPath.row)
+            
+            tableView.deleteRows(at: [indexPath], with: .automatic)
+        } else if editingStyle == .insert {
+            // Create a new instance of the appropriate class, insert it into the array, and add a new row to the table view
+        }
+    }
+    
+    override func tableView(_ tableView: UITableView, moveRowAt sourceIndexPath: IndexPath, to destinationIndexPath: IndexPath) {
+        
+        // секция, из которой происходит перемещение
+        let taskTypeFrom = sectionsTypesPosition[sourceIndexPath.section]
+        // секция, в которую происходит перемещение
+        let taskTypeTo = sectionsTypesPosition[destinationIndexPath.section]
+        // безопасно извлекаем задачу, тем самым копируем ее
+        guard let movedTask = tasks[taskTypeFrom]?[sourceIndexPath.row] else {
+            return
+        }
+        // удаляем задачу с места, от куда она перенесена
+        tasks[taskTypeFrom]!.remove(at: sourceIndexPath.row)
+        // вставляем задачу на новую позицию
+        tasks[taskTypeTo]!.insert(movedTask, at: destinationIndexPath.row)
+        // если секция изменилась, изменяем тип задачи в соответствии с новой позицией
+        
+        if taskTypeFrom != taskTypeTo {
+            tasks[taskTypeTo]![destinationIndexPath.row].type = taskTypeTo
+        }
+        // обновляем данные
+        tableView.reloadData()
+        
+    }
+
 
     /*
     // Override to support conditional editing of the table view.
@@ -149,14 +219,7 @@ class TaskListController: UITableViewController {
 
     /*
     // Override to support editing the table view.
-    override func tableView(_ tableView: UITableView, commit editingStyle: UITableViewCell.EditingStyle, forRowAt indexPath: IndexPath) {
-        if editingStyle == .delete {
-            // Delete the row from the data source
-            tableView.deleteRows(at: [indexPath], with: .fade)
-        } else if editingStyle == .insert {
-            // Create a new instance of the appropriate class, insert it into the array, and add a new row to the table view
-        }    
-    }
+    
     */
 
     /*
